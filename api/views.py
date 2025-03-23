@@ -1,4 +1,3 @@
-# api/views.py
 import json
 import datetime
 import requests
@@ -14,13 +13,6 @@ from django.conf import settings
 # Use OpenStreetMap's free Nominatim for geocoding and OSRM for routing
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
-
-@api_view(['GET'])
-def trip_list(request):
-    if request.method == 'GET':
-        trips = Trip.objects.all()
-        serializer = TripSerializer(trips, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def trip_create(request):
@@ -226,12 +218,20 @@ def generate_eld_logs(trip, route_data, current_cycle_used):
 
     # Calculate pickup time
     # First, drive to pickup location
-    driving_to_pickup_hours = route_data["duration_hours"] * (
-        route_data["distance_miles"] / (
-            route_data["distance_miles"] +
-            route_data["fuel_stops"][-1]["distance_miles"] if route_data["fuel_stops"] else 0
-        )
-    ) if route_data["distance_miles"] > 0 else 0
+    # Fix for division by zero error
+    total_route_distance = route_data["distance_miles"]
+    if total_route_distance <= 0:
+        # Handle case where distance is zero or negative
+        driving_to_pickup_hours = 0
+    else:
+        # Calculate ratio for pickup leg
+        pickup_ratio = 1.0
+        if route_data["fuel_stops"]:
+            # If there are fuel stops, calculate ratio based on last fuel stop distance
+            total_with_fuel = total_route_distance
+            pickup_ratio = total_route_distance / total_with_fuel
+
+        driving_to_pickup_hours = route_data["duration_hours"] * pickup_ratio
 
     # Check if we need to split driving due to HOS limits
     remaining_driving_hours = driving_to_pickup_hours
